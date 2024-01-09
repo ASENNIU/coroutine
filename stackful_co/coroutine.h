@@ -47,6 +47,7 @@ namespace stackful_co {
         //        那建议用runtime()获取
         Status resume();
 
+        // 删除了拷贝构造和赋值构造函数，以防止协程对象被不正确地复制和赋值。
         Coroutine(const Coroutine&) = delete;
 
         Coroutine(const Coroutine&&) = delete;

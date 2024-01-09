@@ -1,6 +1,7 @@
 .globl switch_context
 .type  switch_context, @function
 switch_context:
+    ; 保存当前协程的寄存器状态到上下文
     movq %rsp, %rax
     movq %rax, 104(%rdi)
     movq %rbx, 96(%rdi)
@@ -18,6 +19,7 @@ switch_context:
     movq %r14, 8(%rdi)
     movq %r15, (%rdi)
 
+    ; 从目标协程的上下文（%rsi）恢复寄存器状态
     movq 48(%rsi), %rbp
     movq 104(%rsi), %rsp
     movq (%rsi), %r15
@@ -33,6 +35,7 @@ switch_context:
     movq 96(%rsi), %rbx
     movq 64(%rsi), %rsi
 
+    ; 将返回地址（目标协程）放到栈顶，然后返回
     movq %rax, (%rsp)
     xorq %rax, %rax
     ret

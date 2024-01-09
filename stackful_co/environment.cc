@@ -24,6 +24,7 @@ namespace stackful_co {
     }
 
     Environment::Environment() : _c_stack_top(0) {
+        // 这里相当于一个虚节点，保存主线程的上下文
         _main = std::make_shared<Coroutine>(this, [](){});
         push(_main);
     }

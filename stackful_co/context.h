@@ -38,6 +38,13 @@ namespace stackful_co {
         using Callback = void (*)(Coroutine*);
         using Word = void *;
 
+        /***
+         * 在 x86-64 汇编语言中，这些寄存器对应的寄存器名称分别为：
+         * "ret" 对应的是 "rax" 寄存器，用于存储函数的返回值。
+         * "sp" 对应的是 "rsp" 寄存器，栈指针寄存器。
+         * "rdi" 对应的是 "rdi" 寄存器，通用寄存器之一，用于存储函数的第一个参数。
+         */
+
         constexpr static size_t STACK_SIZE = 1 << 17;
         constexpr static size_t RDI = 7;
         constexpr static size_t RSI = 8;
