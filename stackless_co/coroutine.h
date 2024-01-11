@@ -54,7 +54,7 @@ namespace stackless_co {
             return this->stack;
         }
 
-        inline void *get_cap() {
+        inline ptrdiff_t get_cap() {
             return this->cap;
         }
 

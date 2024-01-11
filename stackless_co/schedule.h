@@ -30,12 +30,15 @@ namespace stackless_co {
 
     private:
 
+        // 保存当前协程的栈
         static void _save_stack(Coroutine *c, char *top);
 
     public:
 
+        // 构造函数
         static Schedule *coroutine_open();
 
+        //
         static void main_func(uint32_t low32, uint32_t high32);
 
         void coroutine_close();

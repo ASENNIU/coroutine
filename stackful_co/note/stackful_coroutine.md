@@ -7,8 +7,8 @@ STACKFUL_COROUTINE 有栈协程的原理和实现
 基于汇编实现有栈协程，参考微信的libco 
 
 ```http
-源代码：https://github.com/JasonkayZK/cpp-learn/tree/coroutine/stack_co
-libco注释版：https://github.com/chenyahui/AnnotatedCode/tree/master/libco
+参考代码：https://github.com/JasonkayZK/cpp-learn/tree/coroutine/stack_co
+微信libco注释版：https://github.com/chenyahui/AnnotatedCode/tree/master/libco
 ```
 
 ## 协程环境

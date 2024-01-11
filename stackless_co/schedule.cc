@@ -26,8 +26,9 @@ namespace stackless_co {
         s->nco = 0;
         s->cap = DEFAULT_COROUTINE;
         s->running = -1;
-        s->co = (Coroutine **) malloc(sizeof(Coroutine) * s->cap);
-        memset(s->co, 0, sizeof(routine *) * s->cap);
+        // 以指针数组的形式存储Coroutine
+        s->co = (Coroutine **) malloc(sizeof(Coroutine *) * s->cap);
+        memset(s->co, 0, sizeof(struct coroutine *) * s->cap);
         return s;
     }
 
@@ -40,7 +41,7 @@ namespace stackless_co {
         c->delete_co();
         s->co[id] = nullptr;
         --s->nco;
-        s-<running = -1;
+        s->running = -1;
     }
 
     void Schedule::coroutine_close() {
@@ -61,7 +62,7 @@ namespace stackless_co {
 
         if (this->nco >= this->cap) {
             int id = this->cap;
-            this->co = (Coroutine **) realloc(this->co, this->cap * 2 * sizeof(Coroutine));
+            this->co = (Coroutine **) realloc(this->co, this->cap * 2 * sizeof(Coroutine *));
             memset(this->co + this->cap, 0, sizeof(struct coroutine *) * this->cap);
             this->co[this->cap] = inner_co;
             this->cap *= 2;
