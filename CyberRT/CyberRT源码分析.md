@@ -618,7 +618,7 @@ bool SchedulerChoreography::DispatchTask(const std::shared_ptr<CRoutine>& cr) {
 
 1. cr->processor_id()的默认值为"-1"，而vector访问越界的时候不会报错，本来应该放入全局队列中的？？？
 
-## ChoreographyContext上下文
+**ChoreographyContext上下文**
 
 ChoreographyContext中的调度就非常简单了。
 
