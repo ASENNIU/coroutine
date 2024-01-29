@@ -22,6 +22,7 @@
 #include <atomic>
 #include <string>
 #include <unordered_map>
+#include <iostream>
 
 #include "cyber/common/environment.h"
 #include "cyber/common/file.h"
@@ -30,6 +31,7 @@
 #include "cyber/scheduler/policy/scheduler_choreography.h"
 #include "cyber/scheduler/policy/scheduler_classic.h"
 #include "cyber/scheduler/scheduler.h"
+
 
 namespace apollo {
 namespace cyber {
@@ -52,6 +54,7 @@ Scheduler* Instance() {
     std::lock_guard<std::mutex> lock(mutex);
     obj = instance.load(std::memory_order_relaxed);
     if (obj == nullptr) {
+      std::cout << "Get Instance... \n";
       std::string policy("classic");
       std::string conf("conf/");
       conf.append(GlobalData::Instance()->ProcessGroup()).append(".conf");

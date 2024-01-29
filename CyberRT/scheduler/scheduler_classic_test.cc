@@ -24,6 +24,8 @@
 #include "cyber/scheduler/policy/classic_context.h"
 #include "cyber/scheduler/processor.h"
 #include "cyber/scheduler/scheduler_factory.h"
+#include "cyber/scheduler/policy/scheduler_choreography.h"
+#include "cyber/scheduler/policy/scheduler_classic.h"
 #include "cyber/task/task.h"
 #include <iostream>
 
@@ -64,7 +66,8 @@ TEST(SchedulerClassicTest, classic) {
 TEST(SchedulerClassicTest, sched_classic) {
   // read example_sched_classic.conf
   GlobalData::Instance()->SetProcessGroup("example_sched_classic");
-  auto sched1 = dynamic_cast<SchedulerClassic*>(scheduler::Instance());
+//  auto sched1 = dynamic_cast<SchedulerClassic*>(scheduler::Instance());
+  auto sched1 = scheduler::Instance();
   std::shared_ptr<CRoutine> cr = std::make_shared<CRoutine>(func);
   auto task_id = GlobalData::RegisterTaskName("ABC");
   cr->set_id(task_id);
@@ -97,6 +100,7 @@ TEST(SchedulerClassicTest, sched_classic) {
 
   GlobalData::Instance()->SetProcessGroup("dreamview_sched");
   auto sched3 = dynamic_cast<SchedulerClassic*>(scheduler::Instance());
+//  auto sched3 = new SchedulerClassic();
   std::shared_ptr<CRoutine> cr3 = std::make_shared<CRoutine>(func);
   cr3->set_id(GlobalData::RegisterTaskName("sched3"));
   cr3->set_name("sched3");

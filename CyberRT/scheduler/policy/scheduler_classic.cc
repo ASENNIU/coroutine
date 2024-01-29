@@ -39,6 +39,7 @@ using apollo::cyber::common::WorkRoot;
 using apollo::cyber::croutine::RoutineState;
 
 SchedulerClassic::SchedulerClassic() {
+  std::cout << "Init SchedulerClassic...\n";
   std::string conf("conf/");
   conf.append(GlobalData::Instance()->ProcessGroup()).append(".conf");
   auto cfg_file = GetAbsolutePath(WorkRoot(), conf);
