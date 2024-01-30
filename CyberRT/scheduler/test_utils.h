@@ -8,9 +8,6 @@
 
 #include "cyber/scheduler/policy/scheduler_classic.h"
 
-#include "gtest/gtest.h"
-
-#include "cyber/base/for_each.h"
 #include "cyber/common/global_data.h"
 #include "cyber/cyber.h"
 #include "cyber/scheduler/policy/classic_context.h"
@@ -112,7 +109,9 @@ std::shared_ptr<CRoutine>  get_croutine(float ratio) {
   }
 };
 
-
+/***
+ * @brief: 代表运行时的虚基类，将上层业务和scheduler绑定
+ */
 class BaseRunner {
 
  public:
@@ -121,43 +120,78 @@ class BaseRunner {
   virtual ~BaseRunner();
   virtual void run() = 0;
  protected:
-  int croutine_num_;
-  float ratio_;
+  int croutine_num_;                          // 创建协程的数量
+  float ratio_;                               // CPU密集型任务的比例
 };
 
-class ChographyRunner : public BaseRunner {
+/***
+ * @brief：运行时的实现类
+ * @tparam T：scheduler的类型，SchedulerClassic或 SchedulerChoreography
+ */
+template<typename T>
+class Runner final : public BaseRunner {
 
  public:
-  ChographyRunner(const std::string& process_group, SchedulerChoreography* sched ,
-           int croutine_num, float ratio, distribution_type type,
-           double a, double b) :
-  BaseRunner(croutine_num, ratio), sched_(dynamic_cast<SchedulerChoreography*>(sched)),
-  process_group_(process_group), type_(type),
-  a_(a), b_(b){}
+  Runner(T* sched, const std::string& process_group,
+         int croutine_num = 1000, float ratio = 0.5,
+         std::string (*p_classic)(const std::string& , float ) = nullptr,
+         std::string (*p_chography)(float ) = nullptr,
+         int processor_id = -1, bool is_classic = true,
+         distribution_type type = NORMAL,
+         double a = 0, double b = 0) :
+  BaseRunner(croutine_num, ratio), sched_(dynamic_cast<T*>(sched)),
+  process_group_(process_group), processor_id_(processor_id),
+  classic_mapping_ptr_(p_classic), chography_mapping_ptr_(p_chography),
+  is_classic_(is_classic), type_(type), a_(a), b_(b){}
 
+  Runner(const Runner&) = delete;
+  Runner(const Runner&&) = delete;
+
+  Runner& operator=(const Runner&) = delete;
+  Runner& operator=(const Runner&&) = delete;
+
+  /***
+   * @brief: 执行函数，根据需创建协程的协程和任务比例，创建协程由scheduler分发
+   */
   void run() {
     for (int i = 0; i < this->croutine_num_; ++i) {
       std::shared_ptr<CRoutine>  c_ptr = get_croutine(this->ratio_);
-      std::string task_name = Mapping2CName(distribution_sampler(type_, a_, b_));
+
+      float prob = distribution_sampler(type_, a_, b_);
+      std::string task_name;
+      if (is_classic_) {
+        task_name = classic_mapping_ptr_(process_group_, prob);
+      } else {
+        task_name = chography_mapping_ptr_(prob);
+      }
+
       auto task_id = GlobalData::RegisterTaskName(task_name);
       c_ptr->set_id(task_id);
       c_ptr->set_name(task_name);
+
+      if (!is_classic_) {
+        c_ptr->set_processor_id(processor_id_);
+      }
+
       sched_->DispatchTask(c_ptr);
     }
   }
 
- private:
-  std::string Mapping2CName(float prob) {
-
-  }
 
  private:
-  SchedulerChoreography* sched_;
-  std::string process_group_;
-  distribution_type type_;
-  double a_;
-  double b_;
+  T* sched_;                                                                // 调度器类指针
+  std::string process_group_;                                               // 所属资源组名字
+  distribution_type type_;                                                  // 数据分布类型
+  double a_ = 0;                                                            // 采样左区间
+  double b_ = 20;                                                                   // 采样右区间
+  std::string (*classic_mapping_ptr_)(const std::string&, float ) = nullptr;       // 将概率值映射到task名字的函数指针
+  std::string (*chography_mapping_ptr_)(float ) = nullptr;                  // 将概率值映射到task名字的函数指针
+  int processor_id_ = -1;                                                   // choreography模式下的processor_id
+  bool is_classic_ = true;                                                  // 是否是classic模式
+
+  // bool is_choreography_;
 };
+
 }
 }
 }
