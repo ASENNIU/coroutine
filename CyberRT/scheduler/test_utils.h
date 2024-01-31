@@ -11,17 +11,24 @@
 #include "cyber/common/global_data.h"
 #include "cyber/cyber.h"
 #include "cyber/scheduler/policy/classic_context.h"
+#include "cyber/scheduler/policy/choreography_context.h"
 #include "cyber/scheduler/processor.h"
+#include "cyber/scheduler/scheduler.h"
 #include "cyber/scheduler/scheduler_factory.h"
 #include "cyber/task/task.h"
+
 #include <iostream>
 #include <cstdlib>
 #include <random>
 #include <memory>
+#include <functional>
+#include <thread>
 
+#include <cstdio>
 
 #define CPU_LOAD 100000
 #define IO_LOAD 50000
+
 
 namespace apollo {
 namespace cyber{
@@ -34,9 +41,21 @@ using apollo::cyber::croutine::RoutineState;
  * @param
  *   CPU_LOAD: 表示任务负载，一直占有CPU
  */
-void cpu_task() {
-  int i = 0;
-  while (i < CPU_LOAD) ++i;
+void cpu_task(const std::string& group, int processor_id, int id) {
+  while (true) {
+    if (processor_id != -1) {
+      printf("Processor %d: cpu_task croutine %d execute...\n", processor_id, id);
+    } else {
+      printf("Group %s: cpu_task croutine %d execute...\n", group.c_str(), id);
+    }
+
+    int i = 0;
+    while (i < CPU_LOAD) ++i;
+
+    CRoutine::GetCurrentRoutine()->SetUpdateFlag();
+    CRoutine::Yield(RoutineState::IO_WAIT);
+  }
+
 }
 
 /***
@@ -44,13 +63,32 @@ void cpu_task() {
  * @param:
  *   IO_LOAD: 表示IO密集型任务中的CPU负载
  */
-void io_task() {
-  int i = 0;
-  while (i < IO_LOAD) ++i;
+void io_task(const std::string& group, int processor_id, int id) {
+  while (true) {
+    if (processor_id != -1) {
+      printf("Processor %d: io_task croutine %d execute...\n", processor_id, id);
+    } else {
+      printf("Group %s: io_task croutine %d execute...\n", group.c_str(), id);
+    };
 
-  CRoutine::yield(RoutineState::IO_WAIT);
-  i = 0;
-  while (i <  IO_LOAD) ++i;
+    int i = 0;
+    while (i < IO_LOAD) ++i;
+
+    CRoutine::GetCurrentRoutine()->SetUpdateFlag();
+    CRoutine::Yield(RoutineState::IO_WAIT);
+
+    i = 0;
+    while (i <  IO_LOAD) ++i;
+    if (processor_id != -1) {
+      printf("Processor %d: io_task croutine %d yield...\n", processor_id, id);
+    } else {
+      printf("Group %s: io_task croutine %d yield...\n", group.c_str(), id);
+    };
+
+    CRoutine::GetCurrentRoutine()->SetUpdateFlag();
+    CRoutine::Yield(RoutineState::IO_WAIT);
+  }
+
 }
 
 /**
@@ -59,9 +97,9 @@ void io_task() {
  *   UNIFORM: 均匀分布
  *   NORMAL: 正态分布
  */
-enum distribution_type{
+enum DistributionType{
   UNIFORM,
-  NORMAL
+  NORMAL,
 };
 
 /***
@@ -71,7 +109,7 @@ enum distribution_type{
  * @param b 采样右区间
  * @return 采样值（默认值为10.0）
  */
-double distribution_sampler(enum distribution_type type, double a, double b) {
+double distribution_sampler(enum DistributionType type, double a, double b) {
   static std::default_random_engine generator;
   double res;
   switch (type) {
@@ -86,9 +124,10 @@ double distribution_sampler(enum distribution_type type, double a, double b) {
       std::normal_distribution<double> distribution(mean, stddev);
 //      std::default_random_engine generator;
       res = distribution(generator);
-      res = std::max(a, std::min(b, res)); // 限制在 [a, b] 区间内
+      res = std::max(a, std::min(b - 1, res)); // 限制在 [a, b] 区间内
       break;
     }
+
     default:
       res = 10.0;
   }
@@ -100,12 +139,18 @@ double distribution_sampler(enum distribution_type type, double a, double b) {
  * @brief: 协程的生成器，这里只是封装task，并不设置其余属性
  * @param: ratio：CPU密集型任务的占比
  */
-std::shared_ptr<CRoutine>  get_croutine(float ratio) {
+std::shared_ptr<CRoutine>  get_croutine(float ratio, const std::string& group, int processor_id, int id) {
   bool flag = (static_cast<float>(std::rand()) / RAND_MAX) < ratio;
   if (flag) {
-    return std::make_shared<CRoutine>(cpu_task);
+    auto func = [=]() {
+      cpu_task(group, processor_id, id);
+    };
+    return std::make_shared<CRoutine>(func);
   } else {
-    return std::make_shared<CRoutine>(io_task);
+    auto func = [=]() {
+      io_task(group, processor_id, id);
+    };
+    return std::make_shared<CRoutine>(func);
   }
 };
 
@@ -117,7 +162,7 @@ class BaseRunner {
  public:
   BaseRunner(int croutine_num, float ratio) :
     croutine_num_(croutine_num), ratio_(ratio) {}
-  virtual ~BaseRunner();
+  virtual ~BaseRunner() = default;
   virtual void run() = 0;
  protected:
   int croutine_num_;                          // 创建协程的数量
@@ -128,21 +173,37 @@ class BaseRunner {
  * @brief：运行时的实现类
  * @tparam T：scheduler的类型，SchedulerClassic或 SchedulerChoreography
  */
-template<typename T>
 class Runner final : public BaseRunner {
 
  public:
-  Runner(T* sched, const std::string& process_group,
+  /***
+   * @brief: Runner类的构造函数
+   * @param sched：调度器类指针
+   * @param process_group：classic模式下所属资源组名字
+   * @param croutine_num：创建协程数量
+   * @param ratio：CPU型任务所占比率
+   * @param p_classic：classic模式的task_name映射函数
+   * @param p_chography：choreography模式下的task_name映射函数
+   * @param processor_id：choreography模式下，使用处理器的id
+   * @param is_classic：是否是classic模式
+   * @param type
+   * @param a
+   * @param b
+   * @note: 成员变量的初始化顺序应当与类的声明顺序一致
+   */
+  Runner(Scheduler* sched, const std::string& process_group,
          int croutine_num = 1000, float ratio = 0.5,
          std::string (*p_classic)(const std::string& , float ) = nullptr,
-         std::string (*p_chography)(float ) = nullptr,
+         std::string (*p_chography)(int, float ) = nullptr,
          int processor_id = -1, bool is_classic = true,
-         distribution_type type = NORMAL,
+         DistributionType type = NORMAL,
          double a = 0, double b = 0) :
-  BaseRunner(croutine_num, ratio), sched_(dynamic_cast<T*>(sched)),
+  BaseRunner(croutine_num, ratio), sched_(sched),
   process_group_(process_group), processor_id_(processor_id),
   classic_mapping_ptr_(p_classic), chography_mapping_ptr_(p_chography),
-  is_classic_(is_classic), type_(type), a_(a), b_(b){}
+  is_classic_(is_classic), type_(type), a_(a), b_(b){
+    show_info();
+  }
 
   Runner(const Runner&) = delete;
   Runner(const Runner&&) = delete;
@@ -150,19 +211,24 @@ class Runner final : public BaseRunner {
   Runner& operator=(const Runner&) = delete;
   Runner& operator=(const Runner&&) = delete;
 
+  virtual ~Runner() = default;
+
   /***
    * @brief: 执行函数，根据需创建协程的协程和任务比例，创建协程由scheduler分发
    */
   void run() {
+
+    int croutine_dispatch_num = 0;
     for (int i = 0; i < this->croutine_num_; ++i) {
-      std::shared_ptr<CRoutine>  c_ptr = get_croutine(this->ratio_);
+      std::shared_ptr<CRoutine>  c_ptr = get_croutine(this->ratio_, process_group_, processor_id_, i);
 
       float prob = distribution_sampler(type_, a_, b_);
+      prob = i < 20 ? i : prob;
       std::string task_name;
       if (is_classic_) {
         task_name = classic_mapping_ptr_(process_group_, prob);
       } else {
-        task_name = chography_mapping_ptr_(prob);
+        task_name = chography_mapping_ptr_(processor_id_, prob);
       }
 
       auto task_id = GlobalData::RegisterTaskName(task_name);
@@ -170,34 +236,47 @@ class Runner final : public BaseRunner {
       c_ptr->set_name(task_name);
 
       if (!is_classic_) {
+        c_ptr->set_priority(static_cast<int>(prob));
         c_ptr->set_processor_id(processor_id_);
       }
 
-      sched_->DispatchTask(c_ptr);
+//      c_ptr->SetUpdateFlag();
+
+      if (sched_->DispatchTask(c_ptr))
+        ++croutine_dispatch_num;
+
+      int delay = 0;
+      while (delay < 5000) ++delay;
+    }
+    if (processor_id_ != -1) {
+      printf("-------------------- Processor %d Finished DispatchTask, Num: %d ------------------\n",
+             processor_id_, croutine_dispatch_num);
+    } else {
+      printf("-------------------- Group %s Finished DispatchTask, Num: %d ------------------\n",
+             process_group_.c_str(), croutine_dispatch_num);
     }
   }
-
+ private:
+  void show_info() {
+    printf("------------------ Process_group: %s, processor_id: %d, is_classic: %d ---------------------\n",
+           process_group_.c_str(), processor_id_, is_classic_);
+  }
 
  private:
-  T* sched_;                                                                // 调度器类指针
-  std::string process_group_;                                               // 所属资源组名字
-  distribution_type type_;                                                  // 数据分布类型
-  double a_ = 0;                                                            // 采样左区间
+  Scheduler* sched_;                                                                // 调度器类指针
+  std::string process_group_;                                                       // 所属资源组名字
+  int processor_id_ = -1;                                                           // choreography模式下的processor_id
+  std::string (*classic_mapping_ptr_)(const std::string&, float ) = nullptr;        // 将概率值映射到task名字的函数指针
+  std::string (*chography_mapping_ptr_)(int, float ) = nullptr;                     // 将概率值映射到task名字的函数指针
+  bool is_classic_ = true;                                                          // 是否是classic模式
+  DistributionType type_;                                                           // 数据分布类型
+  double a_ = 0;                                                                    // 采样左区间
   double b_ = 20;                                                                   // 采样右区间
-  std::string (*classic_mapping_ptr_)(const std::string&, float ) = nullptr;       // 将概率值映射到task名字的函数指针
-  std::string (*chography_mapping_ptr_)(float ) = nullptr;                  // 将概率值映射到task名字的函数指针
-  int processor_id_ = -1;                                                   // choreography模式下的processor_id
-  bool is_classic_ = true;                                                  // 是否是classic模式
-
-  // bool is_choreography_;
 };
 
 }
 }
 }
-
-
-
 
 
 #endif //COROUTINE_CYBERRT_SCHEDULER_TEST_UTILS_H_

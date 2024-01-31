@@ -95,5 +95,15 @@ apollo_cc_test(
     linkstatic = True,
 )
 
+apollo_cc_test(
+    name = "croutine_latency_test",
+    size = "small",
+    srcs = ["croutine_latency.cc"],
+    deps = [
+        "//cyber",
+    ],
+    linkstatic = True,
+)
+
 apollo_package()
 cpplint()

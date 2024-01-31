@@ -33,35 +33,45 @@ namespace apollo {
 namespace cyber {
 namespace scheduler {
 
-void func() {}
+using apollo::cyber::croutine::RoutineState;
 
-TEST(SchedulerClassicTest, classic) {
-  auto processor = std::make_shared<Processor>();
-  auto ctx = std::make_shared<ClassicContext>();
-  processor->BindContext(ctx);
-  std::vector<std::future<void>> res;
-
-  // test single routine
-  auto future = Async([]() {
-    FOR_EACH(i, 0, 20) { cyber::SleepFor(std::chrono::milliseconds(i)); }
-    AINFO << "Finish task: single";
-  });
-  future.get();
-
-  // test multiple routine
-  FOR_EACH(i, 0, 20) {
-    res.emplace_back(Async([i]() {
-      FOR_EACH(time, 0, 30) { cyber::SleepFor(std::chrono::milliseconds(i)); }
-    }));
-    AINFO << "Finish task: " << i;
-  };
-  for (auto& future : res) {
-    future.wait_for(std::chrono::milliseconds(1000));
-  }
-  res.clear();
-  ctx->Shutdown();
-  processor->Stop();
+void func() {
+  int i = 0;
+  do  {
+    std::cout << "execute " << ++i << " times..." << std::endl;
+    CRoutine::GetCurrentRoutine()->SetUpdateFlag();
+    CRoutine::Yield(RoutineState::IO_WAIT);
+//    CRoutine::Yield();
+  } while (i < 10);
 }
+
+//TEST(SchedulerClassicTest, classic) {
+//  auto processor = std::make_shared<Processor>();
+//  auto ctx = std::make_shared<ClassicContext>();
+//  processor->BindContext(ctx);
+//  std::vector<std::future<void>> res;
+//
+//  // test single routine
+//  auto future = Async([]() {
+//    FOR_EACH(i, 0, 20) { cyber::SleepFor(std::chrono::milliseconds(i)); }
+//    AINFO << "Finish task: single";
+//  });
+//  future.get();
+//
+//  // test multiple routine
+//  FOR_EACH(i, 0, 20) {
+//    res.emplace_back(Async([i]() {
+//      FOR_EACH(time, 0, 30) { cyber::SleepFor(std::chrono::milliseconds(i)); }
+//    }));
+//    AINFO << "Finish task: " << i;
+//  };
+//  for (auto& future : res) {
+//    future.wait_for(std::chrono::milliseconds(1000));
+//  }
+//  res.clear();
+//  ctx->Shutdown();
+//  processor->Stop();
+//}
 
 TEST(SchedulerClassicTest, sched_classic) {
   // read example_sched_classic.conf
@@ -72,6 +82,8 @@ TEST(SchedulerClassicTest, sched_classic) {
   cr->set_id(task_id);
   cr->set_name("ABC");
   EXPECT_TRUE(sched1->DispatchTask(cr));
+//  int i = 0;
+//  while(i < 10000000000) ++i;
   // dispatch the same task
   EXPECT_FALSE(sched1->DispatchTask(cr));
   EXPECT_TRUE(sched1->RemoveTask("ABC"));

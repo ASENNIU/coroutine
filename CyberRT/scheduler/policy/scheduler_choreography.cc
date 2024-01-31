@@ -145,6 +145,7 @@ bool SchedulerChoreography::DispatchTask(const std::shared_ptr<CRoutine>& cr) {
     }
   }
 
+
   {
     WriteLockGuard<AtomicRWLock> lk(id_cr_lock_);
     if (id_cr_.find(cr->id()) != id_cr_.end()) {
@@ -166,6 +167,7 @@ bool SchedulerChoreography::DispatchTask(const std::shared_ptr<CRoutine>& cr) {
     }
 
     cr->set_group_name(DEFAULT_GROUP_NAME);
+
 
     // Enqueue task to pool runqueue.
     {
