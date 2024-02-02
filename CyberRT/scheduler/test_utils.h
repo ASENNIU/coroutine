@@ -5,13 +5,8 @@
 #ifndef COROUTINE_CYBERRT_SCHEDULER_TEST_UTILS_H_
 #define COROUTINE_CYBERRT_SCHEDULER_TEST_UTILS_H_
 
-
-#include "cyber/scheduler/policy/scheduler_classic.h"
-
 #include "cyber/common/global_data.h"
 #include "cyber/cyber.h"
-#include "cyber/scheduler/policy/classic_context.h"
-#include "cyber/scheduler/policy/choreography_context.h"
 #include "cyber/scheduler/processor.h"
 #include "cyber/scheduler/scheduler.h"
 #include "cyber/scheduler/scheduler_factory.h"
@@ -23,35 +18,56 @@
 #include <memory>
 #include <functional>
 #include <thread>
-
 #include <cstdio>
-
-#define CPU_LOAD 100000
-#define IO_LOAD 50000
 
 
 namespace apollo {
 namespace cyber{
 namespace scheduler {
 
-using apollo::cyber::croutine::RoutineState;
+#define CPU_LOAD 100000
+#define IO_LOAD 50000
+
+#define CR_execute 0
+#define CR_yield 1
 
 /***
- * @brief 模拟CPU密集型任务
- * @param
- *   CPU_LOAD: 表示任务负载，一直占有CPU
+ * 另一种写法：
+ * const char* cr_runtime_state[] = {
+ *   [CR_execute] = "execute",
+ *   [CR_yield] = "yield"
+ * };
+ * 但这里会报错，编译器不支持非平凡（non-trivial）的指定初始化器（designated initializers）
+ * sorry, unimplemented: non-trivial designated initializers not supported
+ */
+
+const char* cr_runtime_state[] = {
+    "execute",                  // [CR_execute]
+    "yield"                     // [CR_yield]
+};
+
+using apollo::cyber::croutine::RoutineState;
+
+void print_info(const std::string& group, int processor_id, int id, const char* state) {
+  if (processor_id != -1) {
+    printf("Processor %d: cpu_task croutine %d %s...\n", processor_id, id, state);
+  } else {
+    printf("Group %s: cpu_task croutine %d %s...\n", group.c_str(), id, state);
+  }
+}
+
+/***
+ * @brief 模拟CPU密集型任务（一个CPU Task代表一次独占CPU的计算任务，while true循环模拟等待事件到来）
+ * @param CPU_LOAD: 表示任务负载，一直占有CPU
  */
 void cpu_task(const std::string& group, int processor_id, int id) {
   while (true) {
-    if (processor_id != -1) {
-      printf("Processor %d: cpu_task croutine %d execute...\n", processor_id, id);
-    } else {
-      printf("Group %s: cpu_task croutine %d execute...\n", group.c_str(), id);
-    }
+    print_info(group, processor_id, id, cr_runtime_state[CR_execute]);
 
     int i = 0;
     while (i < CPU_LOAD) ++i;
 
+    // 让出CPU执行权
     CRoutine::GetCurrentRoutine()->SetUpdateFlag();
     CRoutine::Yield(RoutineState::IO_WAIT);
   }
@@ -59,32 +75,25 @@ void cpu_task(const std::string& group, int processor_id, int id) {
 }
 
 /***
- * @brief 模拟IO密集型任务，模式为: 计算 -> 等待IO -> 计算
- * @param:
- *   IO_LOAD: 表示IO密集型任务中的CPU负载
+ * @brief 模拟IO密集型任务，一个IO任务模式为: 计算 -> 等待IO -> 计算
+ * @param IO_LOAD: 表示IO密集型任务中的CPU负载
  */
 void io_task(const std::string& group, int processor_id, int id) {
   while (true) {
-    if (processor_id != -1) {
-      printf("Processor %d: io_task croutine %d execute...\n", processor_id, id);
-    } else {
-      printf("Group %s: io_task croutine %d execute...\n", group.c_str(), id);
-    };
+    print_info(group, processor_id, id, cr_runtime_state[CR_execute]);
 
     int i = 0;
     while (i < IO_LOAD) ++i;
 
+    // 等待IO，让出CPU
     CRoutine::GetCurrentRoutine()->SetUpdateFlag();
     CRoutine::Yield(RoutineState::IO_WAIT);
 
     i = 0;
     while (i <  IO_LOAD) ++i;
-    if (processor_id != -1) {
-      printf("Processor %d: io_task croutine %d yield...\n", processor_id, id);
-    } else {
-      printf("Group %s: io_task croutine %d yield...\n", group.c_str(), id);
-    };
+    print_info(group, processor_id, id, cr_runtime_state[CR_yield]);
 
+    // 让出CPU，等待下一个事件
     CRoutine::GetCurrentRoutine()->SetUpdateFlag();
     CRoutine::Yield(RoutineState::IO_WAIT);
   }
@@ -201,9 +210,7 @@ class Runner final : public BaseRunner {
   BaseRunner(croutine_num, ratio), sched_(sched),
   process_group_(process_group), processor_id_(processor_id),
   classic_mapping_ptr_(p_classic), chography_mapping_ptr_(p_chography),
-  is_classic_(is_classic), type_(type), a_(a), b_(b){
-    show_info();
-  }
+  is_classic_(is_classic), type_(type), a_(a), b_(b) {}
 
   Runner(const Runner&) = delete;
   Runner(const Runner&&) = delete;
@@ -240,7 +247,6 @@ class Runner final : public BaseRunner {
         c_ptr->set_processor_id(processor_id_);
       }
 
-//      c_ptr->SetUpdateFlag();
 
       if (sched_->DispatchTask(c_ptr))
         ++croutine_dispatch_num;
@@ -256,13 +262,9 @@ class Runner final : public BaseRunner {
              process_group_.c_str(), croutine_dispatch_num);
     }
   }
- private:
-  void show_info() {
-    printf("------------------ Process_group: %s, processor_id: %d, is_classic: %d ---------------------\n",
-           process_group_.c_str(), processor_id_, is_classic_);
-  }
 
  private:
+
   Scheduler* sched_;                                                                // 调度器类指针
   std::string process_group_;                                                       // 所属资源组名字
   int processor_id_ = -1;                                                           // choreography模式下的processor_id

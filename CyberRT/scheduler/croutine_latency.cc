@@ -4,7 +4,6 @@
 
 #include "cyber/common/global_data.h"
 #include "cyber/cyber.h"
-#include "cyber/scheduler/policy/classic_context.h"
 #include "cyber/scheduler/scheduler.h"
 #include "cyber/scheduler/processor.h"
 #include "cyber/scheduler/scheduler_factory.h"
@@ -23,6 +22,9 @@
 using apollo::cyber::scheduler::DistributionType;
 using apollo::cyber::scheduler::Runner;
 
+/**
+ * @brief：启动参数对应的类，见parse_argv
+ */
 struct execute_env {
   bool is_classic;
   struct runner_conf* conf_ptr;
@@ -59,9 +61,10 @@ struct runner_conf {
  * @param argv: 启动命令行参数
  * @details:
  *   argv[0]: 程序文件名
- *   argv[1]: 是否是classic模式, 0-1
- *   argv[2]: runner_conf的长度
- *   argv[3]: 运行时长
+ *   argv[1]: scheduler配制文件
+ *   argv[2]: 是否是classic模式, 0-1
+ *   argv[3]: resources的数量
+ *   argv[4]: 运行时长
  * @return
  */
 bool parse_argv(char** argv, struct execute_env& env);
@@ -122,7 +125,8 @@ void execute(struct execute_env& env) {
   std::vector<std::shared_ptr<Runner>> runner_vec;
 
   for (int i = 0; i < env.conf_length; ++i) {
-    runner_vec.emplace_back(std::make_shared<Runner>(sched, env.conf_ptr[i].process_group,
+    runner_vec.emplace_back(std::make_shared<Runner>(sched,
+                                                     env.conf_ptr[i].process_group,
                                                      env.conf_ptr[i].croutine_num,
                                                      env.conf_ptr[i].ratio,
                                                      env.conf_ptr[i].classic_mapping_ptr,
